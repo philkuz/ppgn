@@ -44,12 +44,15 @@ class ClassConditionalSampler(Sampler):
 
         dst = net.blobs[end]
 
+	print('end, unit, dst',end, unit, dst)
         acts = net.forward(data=image, end=end)
         one_hot = np.zeros_like(dst.data)
+	print(one_hot.shape)
 
         # Get the activations
         if end in self.fc_layers:
             layer_acts = acts[end][0]
+            print(acts[end].shape, len(layer_acts))
         elif end in self.conv_layers:
             layer_acts = acts[end][0, :, xy, xy]
 
@@ -67,6 +70,7 @@ class ClassConditionalSampler(Sampler):
         # Assign the gradient 
         if end in self.fc_layers:
             one_hot.flat[unit] = softmax_grad[unit]
+	    print(one_hot)
         elif end in self.conv_layers:
             one_hot[:, unit, xy, xy] = softmax_grad[unit]
         else:
@@ -170,6 +174,7 @@ def main():
         # shape of the code being optimized
         shape = generator.blobs[settings.generator_in_layer].data.shape
         start_code = np.random.normal(0, 1, shape)
+	print(shape)
         print ">>", np.min(start_code), np.max(start_code)
 
     # Separate the dash-separated list of units into numbers

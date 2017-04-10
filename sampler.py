@@ -25,6 +25,7 @@ class Sampler(object):
 
         # set up the inputs for the net: 
         image_size = encoder.blobs['data'].shape[2:]    # (1, 3, 227, 227)
+	print('encoder.blobs["data"].data',encoder.blobs["data"].data)
         images = np.zeros_like(encoder.blobs["data"].data, dtype='float32')
 
         in_image = scipy.misc.imread(path)
@@ -121,6 +122,7 @@ class Sampler(object):
         generator_output_size = util.get_image_size(generator_output_shape)
         encoder_input_size = util.get_image_size(encoder_input_shape)
 
+	print('size', image_size, generator_output_size, encoder_input_size)
         # The top left offset to crop the output image to get a 227x227 image
         topleft = self.compute_topleft(image_size, generator_output_size)
         topleft_DAE = self.compute_topleft(encoder_input_size, generator_output_size)
