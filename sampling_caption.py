@@ -165,14 +165,6 @@ def main():
     # Fix the seed
     np.random.seed(args.seed)
 
-    if args.init_file != "None":
-        start_code, start_image = get_code(encoder=encoder, path=args.init_file, layer=args.opt_layer)
-
-        print "Loaded start code: ", start_code.shape
-    else:
-        # shape of the code being optimized
-        shape = generator.blobs[settings.generator_in_layer].data.shape
-        start_code = np.random.normal(0, 1, shape)
 
     # Split the sentence into words
     words = args.sentence.split("_")
@@ -183,6 +175,14 @@ def main():
         
     # Optimize a code via gradient ascent
     sampler = CaptionConditionalSampler(args.captioner_definition, args.net_weights)
+    if args.init_file != "None":
+        start_code, start_image = sampler.get_code(encoder=encoder, path=args.init_file, layer=args.opt_layer)
+
+        print "Loaded start code: ", start_code.shape
+    else:
+        # shape of the code being optimized
+        shape = generator.blobs[settings.generator_in_layer].data.shape
+        start_code = np.random.normal(0, 1, shape)
     output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, 
                         gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code, 
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold, 

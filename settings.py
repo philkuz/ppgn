@@ -17,6 +17,8 @@ generator_out_layer = "deconv0"
 encoder_weights = "nets/caffenet/bvlc_reference_caffenet.caffemodel"
 encoder_definition = "nets/caffenet/caffenet.prototxt"
 
+# Encoder E
+edge_definition = "nets/laplace_conv.prototxt"
 # Text files
 synset_file = "misc/synset_words.txt"
 vocab_file = "misc/vocabulary.txt"

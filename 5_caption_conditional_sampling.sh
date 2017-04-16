@@ -29,7 +29,7 @@ epsilon2=1        # condition
 epsilon3=1e-17    # noise
 # -----------------------------------------------
 
-init_file="None"    # Start from a random code
+init_file="images/key.jpg"    # Start from a random code
 
 # Condition net
 net_weights="nets/lrcn/lrcn_caffenet_iter_110000.caffemodel"

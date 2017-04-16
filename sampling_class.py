@@ -44,15 +44,12 @@ class ClassConditionalSampler(Sampler):
 
         dst = net.blobs[end]
 
-	print('end, unit, dst',end, unit, dst)
         acts = net.forward(data=image, end=end)
         one_hot = np.zeros_like(dst.data)
-	print(one_hot.shape)
 
         # Get the activations
         if end in self.fc_layers:
             layer_acts = acts[end][0]
-            print(acts[end].shape, len(layer_acts))
         elif end in self.conv_layers:
             layer_acts = acts[end][0, :, xy, xy]
 
@@ -70,7 +67,6 @@ class ClassConditionalSampler(Sampler):
         # Assign the gradient 
         if end in self.fc_layers:
             one_hot.flat[unit] = softmax_grad[unit]
-	    print(one_hot)
         elif end in self.conv_layers:
             one_hot[:, unit, xy, xy] = softmax_grad[unit]
         else:
@@ -162,32 +158,35 @@ def main():
     net = caffe.Classifier(args.net_definition, args.net_weights,
                              mean = np.float32([104.0, 117.0, 123.0]), # ImageNet mean
                              channel_swap = (2,1,0)) # the reference model has channels in BGR order instead of RGB
-
+    edge_detector= caffe.Net(settings.edge_definition,  caffe.TEST)
+    # make Sobel operator for edge detection
+    laplace = np.array((0, -1, 0, -1, 4, -1, 0, -1, 0), dtype=np.float32).reshape((3,3))
+    edge_detector.params['laplace'][0].data[0, 0, :, :] = laplace  # horizontal
     # Fix the seed
     np.random.seed(args.seed)
 
-    if args.init_file != "None":
-        start_code, start_image = get_code(encoder=encoder, path=args.init_file, layer=args.opt_layer)
-
-        print "Loaded start code: ", start_code.shape
-    else:
-        # shape of the code being optimized
-        shape = generator.blobs[settings.generator_in_layer].data.shape
-        start_code = np.random.normal(0, 1, shape)
-	print(shape)
-        print ">>", np.min(start_code), np.max(start_code)
 
     # Separate the dash-separated list of units into numbers
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]       
     
     # Optimize a code via gradient ascent
     sampler = ClassConditionalSampler()
-    output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, 
+    if args.init_file != "None":
+        start_code, start_image, mask = sampler.get_code(encoder=encoder, path=args.init_file, layer=args.opt_layer, output_dir=args.output_dir, in_painting=True, inverse=True)
+
+        print "Loaded start code: ", start_code.shape
+    else:
+        raise ArgumentError('must pass in an init file')
+        # shape of the code being optimized
+        shape = generator.blobs[settings.generator_in_layer].data.shape
+        start_code = np.random.normal(0, 1, shape)
+        print ">>", np.min(start_code), np.max(start_code)
+    output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_generator=generator, edge_detector=edge_detector, 
                         gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code, 
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold, 
                         layer=args.act_layer, conditions=conditions,
-                        epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
-                        output_dir=args.output_dir, 
+                        epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3, 
+                        output_dir=args.output_dir, mask=mask, input_image=start_image, 
                         reset_every=args.reset_every, save_every=args.save_every)
 
     # Output image
