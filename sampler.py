@@ -16,6 +16,13 @@ from numpy.linalg import norm
 import scipy.misc, scipy.io
 import util
 
+# weights for content loss
+CAFFENET_WEIGHTS = {"content": {"conv4": 1},
+                    "style": {"conv1": 0.2,
+                              "conv2": 0.2,
+                              "conv3": 0.2,
+                              "conv4": 0.2,
+                              "conv5": 0.2}}
 
 class Sampler(object):
     def get_code(self, encoder, path, layer, output_dir='', in_painting=False, inverse=False):
@@ -23,7 +30,7 @@ class Sampler(object):
         Push the given image through an encoder (here, AlexNet) to get a code.
         '''
 
-        # set up the inputs for the net: 
+        # set up the inputs for the net:
         image_size = encoder.blobs['data'].shape[2:]    # (1, 3, 227, 227)
         images = np.zeros_like(encoder.blobs["data"].data, dtype='float32')
 
@@ -35,7 +42,7 @@ class Sampler(object):
 
         # inpainting
         top_left_x = image_size[0] / 3
-        top_left_y = image_size[1] / 3 
+        top_left_y = image_size[1] / 3
         width = image_size[0] / 3
         height = image_size[1] / 3
         # make a square mask
@@ -80,7 +87,7 @@ class Sampler(object):
 
         return g
 
-    
+
     def compute_topleft(self, input_size, output_size):
         '''
         Compute the offsets (top, left) to crop the output image if its size does not match that of the input image.
@@ -104,7 +111,7 @@ class Sampler(object):
 
         generated = encoder.forward(feat=h)
         x0 = encoder.blobs[gen_out_layer].data.copy()    # 256x256
-        
+
         # Crop from 256x256 to 227x227
         image_size = decoder.blobs['data'].shape    # (1, 3, 227, 227)
         cropped_x0 = x0[:,:,topleft[0]:topleft[0]+image_size[2], topleft[1]:topleft[1]+image_size[3]]
@@ -123,7 +130,7 @@ class Sampler(object):
         # calculate the edges of the images
         input_edge = edge_detector.forward(data=input_image)['laplace'].copy()
         generated_edge = edge_detector.forward(data=generated_image)['laplace'].copy()
-        
+
         # l2 norm derivative is just the difference
         diff = input_edge - generated_edge
         print('diffnorm',norm(generated_edge), norm(input_edge))
@@ -137,22 +144,48 @@ class Sampler(object):
         dst.diff.fill(0.)   # reset objective after each step
         return g
 
-    def sampling( self, condition_net, image_encoder, image_generator, edge_detector, 
-                gen_in_layer, gen_out_layer, start_code, 
-                n_iters, lr, lr_end, threshold, 
-                layer, conditions, mask=None, input_image=None, #units=None, xy=0, 
-                epsilon1=1, epsilon2=1, epsilon3=1e-10, 
+    def get_content_gradient(self, input_image, generated_image, image_net, content_layer):
+        '''
+        Return content loss gradient as defined in Gatys et. al.
+        TODO run test
+        '''
+
+        # calculate the edges of the images
+        input_content = image_net.forward(data=input_image)[content_layer].data[0].copy()
+        generated_content = image_net.forward(data=generated_image)[content_layer].data[0].copy()
+
+        # l2 norm derivative is just the difference
+        diff = input_content - generated_content
+        grad = diff * (input_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
+        print('DEBUGS image norms',norm(generated_content), norm(input_content))
+
+        # backprop back
+        dst = image_net.blobs[content_layer]
+
+        dst.grad[...] = grad
+        image_net.backward(start=content_layer)
+        # assumes that the input layer of the net is 'data'
+        g = image_net.blobs['data'].diff.copy()
+
+        dst.diff.fill(0.)   # reset objective after each step
+        return g
+
+    def sampling( self, condition_net, image_encoder, image_net, image_generator, edge_detector,
+                gen_in_layer, gen_out_layer, start_code,
+                n_iters, lr, lr_end, threshold,
+                layer, conditions, mask=None, input_image=None, #units=None, xy=0,
+                epsilon1=1, epsilon2=1, epsilon3=1e-10, epsilon4=1,
                 output_dir=None, reset_every=0, save_every=1):
         if mask is None:
-            raise ArgumentError('mask must be input into sampling at the moment')
+            raise ValueError('mask must be input into sampling at the moment')
         if input_image is None:
-            raise ArgumentError('mage must be input into sampling at the moment')
+            raise ValueError('mage must be input into sampling at the moment')
         # Get the input and output sizes
         image_shape = condition_net.blobs['data'].data.shape
         generator_output_shape = image_generator.blobs[gen_out_layer].data.shape
         encoder_input_shape = image_encoder.blobs['data'].data.shape
 
-        # Calculate the difference between the input image of the condition net 
+        # Calculate the difference between the input image of the condition net
         # and the output image from the generator
         image_size = util.get_image_size(image_shape)
         generator_output_size = util.get_image_size(generator_output_shape)
@@ -163,17 +196,17 @@ class Sampler(object):
         topleft_DAE = self.compute_topleft(encoder_input_size, generator_output_size)
 
         src = image_generator.blobs[gen_in_layer]     # the input feature layer of the generator
-        
+
         # Make sure the layer size and initial vector size match
         assert src.data.shape == start_code.shape
 
         # Variables to store the best sample
         last_xx = np.zeros(image_shape)    # best image
-        last_prob = -sys.maxint                 # highest probability 
+        last_prob = -sys.maxint                 # highest probability
 
         h = start_code.copy()
 
-        condition_idx = 0 
+        condition_idx = 0
         list_samples = []
         i = 0
 
@@ -195,20 +228,20 @@ class Sampler(object):
             cropped_x = mask * input_image + (1 - mask) * cropped_x_nomask
 
             # Forward pass the image x to the condition net up to an unit k at the given layer
-            # Backprop the gradient through the condition net to the image layer to get a gradient image 
-            d_condition_x, prob, info = self.forward_backward_from_x_to_condition(net=condition_net, end=layer, image=cropped_x, condition=condition) 
+            # Backprop the gradient through the condition net to the image layer to get a gradient image
+            d_condition_x, prob, info = self.forward_backward_from_x_to_condition(net=condition_net, end=layer, image=cropped_x, condition=condition)
             generated_image = (1 - mask) * d_condition_x
             d_edge = self.get_edge_gradient(input_image, generated_image, edge_detector)
             print('norm', norm(d_edge))
             d_condition_x = generated_image + 1e-6 * (mask) * (input_image - cropped_x_nomask) - 1e-8 * d_edge
-            # Put the gradient back in the 256x256 format 
+            # Put the gradient back in the 256x256 format
             d_condition_x256 = np.zeros_like(x)
             d_condition_x256[:,:,topleft[0]:topleft[0]+image_size[0], topleft[1]:topleft[1]+image_size[1]] = d_condition_x.copy()
 
             # Backpropagate the above gradient all the way to h (through generator)
             # This gradient 'd_condition' is d log(p(y|h)) / dh (the epsilon2 term in Eq. 11 in the paper)
             d_condition = self.backward_from_x_to_h(generator=image_generator, diff=d_condition_x256, start=gen_in_layer, end=gen_out_layer)
-          # inpainting = (1 - mask) * d_condition_x  
+          # inpainting = (1 - mask) * d_condition_x
           # d_inpainting = self.backward_from_x_to_h(generator=image_generator, diff=d_condition_x256, start=gen_in_layer, end=gen_out_layer)
             self.print_progress(i, info, condition, prob, d_condition)
 
@@ -217,14 +250,16 @@ class Sampler(object):
             if epsilon3 > 0:
                 noise = np.random.normal(0, epsilon3, h.shape)  # Gaussian noise
 
-            # Update h according to Eq.11 in the paper
-            d_h = epsilon1 * d_prior + epsilon2 * d_condition + noise 
+            # TODO don't hardcode conv4
+            d_content = self.get_content_gradient(input_image, generated_image, image_net, 'conv4')
+            d_h = epsilon1 * d_prior + epsilon2 * d_condition + epsilon4 * d_content + noise
             h += step_size/np.abs(d_h).mean() * d_h
 
             h = np.clip(h, a_min=0, a_max=30)   # Keep the code within a realistic range
 
+            # TODO watch out for when this is invoked. Not explored
             # Reset the code every N iters (for diversity when running a long sampling chain)
-            if reset_every > 0 and i % reset_every == 0 and i > 0: 
+            if reset_every > 0 and i % reset_every == 0 and i > 0:
                 h = np.random.normal(0, 1, h.shape)
 
                 # Experimental: For sample diversity, it's a good idea to randomly pick epsilon1 as well
@@ -240,7 +275,7 @@ class Sampler(object):
 
                 label = self.get_label(condition)
                 image = last_xx * mask + (1 - mask) * input_image
-                list_samples.append( (last_xx.copy(), name, label) ) 
+                list_samples.append( (last_xx.copy(), name, label) )
 
             # Stop if grad is 0
             if norm(d_h) == 0:
