@@ -24,11 +24,16 @@ threshold=0       # Filter out samples below this threshold e.g. 0.98
 # -----------------------------------------------
 # Multipliers in the update rule Eq.11 in the paper
 # -----------------------------------------------
-epsilon1=1e-5       # prior
-epsilon2=1        # condition
-epsilon3=1e-17    # noise
-# -----------------------------------------------
+epsilon1=1e-5        # prior
+epsilon2=0           # condition
+epsilon3=1e-10       # noise
 
+# -----------------------------------------------
+# Ablative Compression variables
+edge_epsilon=1e-6    # edge
+content_epsilon=0 #1e-6 # content
+mask_epsilon=1e-6    # mask epsilon
+content_layer=conv4 # layer to use for content loss6
 init_file="images/bell_pepper.jpg"    # Start from a random code. To start from a real code, replace with a path e.g. "images/filename.jpg"
 
 # Condition net
@@ -49,8 +54,8 @@ fi
 
 for unit in ${units}; do
     unit_pad=`printf "%04d" ${unit}`
-
-    for seed in {0..0}; do
+    seed=0
+    #for seed in {0..0}; do
 
         python ./sampling_class.py \
             --act_layer ${act_layer} \
@@ -68,6 +73,10 @@ for unit in ${units}; do
             --epsilon1 ${epsilon1} \
             --epsilon2 ${epsilon2} \
             --epsilon3 ${epsilon3} \
+            --mask_epsilon ${mask_epsilon} \
+            --edge_epsilon ${edge_epsilon} \
+            --content_epsilon ${content_epsilon} \
+            --content_layer ${content_layer} \
             --threshold ${threshold} \
             --net_weights ${net_weights} \
             --net_definition ${net_definition} \
@@ -82,5 +91,5 @@ for unit in ${units}; do
       
             readlink -f ${f_chain}
         fi
-    done
+    #done
 done

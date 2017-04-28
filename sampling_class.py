@@ -107,14 +107,19 @@ def main():
     parser.add_argument('--reset_every', metavar='reset_iter', type=int, default=0, help='Reset the code every N iterations')
     parser.add_argument('--lr', metavar='lr', type=float, default=2.0, nargs='?', help='Learning rate')
     parser.add_argument('--lr_end', metavar='lr', type=float, default=-1.0, nargs='?', help='Ending Learning rate')
-    parser.add_argument('--epsilon2', metavar='lr', type=float, default=1.0, nargs='?', help='Ending Learning rate')
-    parser.add_argument('--epsilon1', metavar='lr', type=float, default=1.0, nargs='?', help='Ending Learning rate')
-    parser.add_argument('--epsilon3', metavar='lr', type=float, default=1.0, nargs='?', help='Ending Learning rate')
+    parser.add_argument('--epsilon2', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for condition ')
+    parser.add_argument('--epsilon1', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for prior')
+    parser.add_argument('--epsilon3', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for noise')
+    parser.add_argument('--mask_epsilon', metavar='eps', type=float, default=1e-6, nargs='?', help='Scalar for mask loss')
+    parser.add_argument('--edge_epsilon', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for edge loss')
+    parser.add_argument('--content_epsilon', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for content loss')
+    parser.add_argument('--content_layer', metavar='layer', type=str, default='conv4', nargs='?', help='Layer to use for content loss')
     parser.add_argument('--seed', metavar='n', type=int, default=0, nargs='?', help='Random seed')
     parser.add_argument('--xy', metavar='n', type=int, default=0, nargs='?', help='Spatial position for conv units')
     parser.add_argument('--opt_layer', metavar='s', type=str, help='Layer at which we optimize a code')
     parser.add_argument('--act_layer', metavar='s', type=str, default="fc8", help='Layer at which we activate a neuron')
     parser.add_argument('--init_file', metavar='s', type=str, default="None", help='Init image')
+    parser.add_argument('--inpainting', action='store_true', default=False, help='whether or not to use inpainting')
     parser.add_argument('--write_labels', action='store_true', default=False, help='Write class labels to images')
     parser.add_argument('--output_dir', metavar='b', type=str, default=".", help='Output directory for saving results')
     parser.add_argument('--net_weights', metavar='b', type=str, default=settings.encoder_weights, help='Weights of the net being visualized')
@@ -137,6 +142,11 @@ def main():
     print " epsilon1: %s" % args.epsilon1
     print " epsilon2: %s" % args.epsilon2
     print " epsilon3: %s" % args.epsilon3
+    print " mask_epsilon: %s" % args.mask_epsilon
+    print " edge_epsilon: %s" % args.edge_epsilon
+    print " content_epsilon: %s" % args.content_epsilon
+    print " inpainting: %s" % args.inpainting
+    print " content_layer: %s" % args.content_layer
 
     print " start learning rate: %s" % args.lr
     print " end learning rate: %s" % args.lr_end
@@ -187,6 +197,9 @@ def main():
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
                         layer=args.act_layer, conditions=conditions,
                         epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
+			inpainting=args.inpainting, 
+			mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon, edge_epsilon=args.edge_epsilon,
+			content_layer=args.content_layer, 
                         output_dir=args.output_dir, mask=mask, input_image=start_image,
                         reset_every=args.reset_every, save_every=args.save_every)
 

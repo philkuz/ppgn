@@ -45,17 +45,19 @@ class Sampler(object):
         top_left_y = image_size[1] / 3
         width = image_size[0] / 3
         height = image_size[1] / 3
-        # make a square mask
-        zeros = np.zeros_like(data)
-        ones = np.ones_like(data)
-        if inverse:
-            mask = zeros
-            not_mask = ones
-        else:
-            mask = ones
-            not_mask = zeros
-        mask[:,:, top_left_x : width + top_left_x, top_left_y: top_left_y + height]  = not_mask[:,:, top_left_x : width + top_left_x, top_left_y: top_left_y + height]
-
+        if in_painting:
+            # make a square mask
+            zeros = np.zeros_like(data)
+            ones = np.ones_like(data)
+            if inverse:
+                mask = zeros
+                not_mask = ones
+            else:
+                mask = ones
+                not_mask = zeros
+            mask[:,:, top_left_x : width + top_left_x, top_left_y: top_left_y + height]  = not_mask[:,:, top_left_x : width + top_left_x, top_left_y: top_left_y + height]
+        else: 
+            mask = None
         name = "%s/samples/%s.jpg" % (output_dir, 'start')
         util.save_image(data, name)
         # subtract the ImageNet mean
@@ -101,21 +103,27 @@ class Sampler(object):
         topleft = ((output_size[0] - input_size[0])/2, (output_size[1] - input_size[1])/2)
         return topleft
 
-
-    def h_autoencoder_grad(self, h, encoder, decoder, gen_out_layer, topleft, mask, input_image):
+    def check_inpainting(self, inpainting, mask, input_image):
+        ''' returns true whether the inpainting parameters are legit'''
+        cond =  not inpainting or mask is not None and input_image is not None
+        assert cond, 'parameters are invalid for inpainting'
+    def h_autoencoder_grad(self, h, encoder, decoder, gen_out_layer, topleft, inpainting=False, mask=None, input_image=None):
         '''
         Compute the gradient of the energy of P(input) wrt input, which is given by decode(encode(input))-input {see Alain & Bengio, 2014}.
         Specifically, we compute E(G(h)) - h.
         Note: this is an "upside down" auto-encoder for h that goes h -> x -> h with G modeling h -> x and E modeling x -> h.
         '''
-
+        self.check_inpainting(inpainting, mask, input_image)
         generated = encoder.forward(feat=h)
         x0 = encoder.blobs[gen_out_layer].data.copy()    # 256x256
 
         # Crop from 256x256 to 227x227
         image_size = decoder.blobs['data'].shape    # (1, 3, 227, 227)
         cropped_x0 = x0[:,:,topleft[0]:topleft[0]+image_size[2], topleft[1]:topleft[1]+image_size[3]]
-        cropped_x0 = mask * input_image + (1 - mask) * cropped_x0
+
+        if inpainting:
+            cropped_x0 = mask * input_image + (1 - mask) * cropped_x0
+    
         # Push this 227x227 image through net
         decoder.forward(data=cropped_x0)
         code = decoder.blobs['fc6'].data
@@ -151,8 +159,11 @@ class Sampler(object):
         '''
 
         # calculate the edges of the images
-        input_content = image_net.forward(data=input_image)[content_layer].data[0].copy()
-        generated_content = image_net.forward(data=generated_image)[content_layer].data[0].copy()
+        input_forward = image_net.forward(data=input_image)
+	input_content = image_net.blobs[content_layer].data[0].copy()
+	# TODO could pose issues if not reset
+        generated_forward = image_net.forward(data=generated_image)
+        generated_content = image_net.blobs[content_layer].data[0].copy()
 
         # l2 norm derivative is just the difference
         diff = input_content - generated_content
@@ -162,7 +173,7 @@ class Sampler(object):
         # backprop back
         dst = image_net.blobs[content_layer]
 
-        dst.grad[...] = grad
+        dst.diff[...] = grad
         image_net.backward(start=content_layer)
         # assumes that the input layer of the net is 'data'
         g = image_net.blobs['data'].diff.copy()
@@ -171,15 +182,14 @@ class Sampler(object):
         return g
 
     def sampling( self, condition_net, image_encoder, image_net, image_generator, edge_detector,
-                gen_in_layer, gen_out_layer, start_code,
+                gen_in_layer, gen_out_layer, start_code, content_layer, 
                 n_iters, lr, lr_end, threshold,
-                layer, conditions, mask=None, input_image=None, #units=None, xy=0,
-                epsilon1=1, epsilon2=1, epsilon3=1e-10, epsilon4=1,
+                layer, conditions, inpainting=False, mask=None, input_image=None, #units=None, xy=0,
+                epsilon1=1, epsilon2=1, epsilon3=1e-10,
+                mask_epsilon=1e-6, content_epsilon=1e-8, edge_epsilon=1e-8,
                 output_dir=None, reset_every=0, save_every=1):
-        if mask is None:
-            raise ValueError('mask must be input into sampling at the moment')
-        if input_image is None:
-            raise ValueError('mage must be input into sampling at the moment')
+        # checks whether inpainting is valid
+        self.check_inpainting(inpainting, mask, input_image)
         # Get the input and output sizes
         image_shape = condition_net.blobs['data'].data.shape
         generator_output_shape = image_generator.blobs[gen_out_layer].data.shape
@@ -225,15 +235,28 @@ class Sampler(object):
 
             # Crop from 256x256 to 227x227
             cropped_x_nomask = x[:,:,topleft[0]:topleft[0]+image_size[0], topleft[1]:topleft[1]+image_size[1]]
-            cropped_x = mask * input_image + (1 - mask) * cropped_x_nomask
+            if inpainting:
+                cropped_x = mask * input_image + (1 - mask) * cropped_x_nomask
+            else:
+                cropped_x = cropped_x_nomask
 
             # Forward pass the image x to the condition net up to an unit k at the given layer
             # Backprop the gradient through the condition net to the image layer to get a gradient image
             d_condition_x, prob, info = self.forward_backward_from_x_to_condition(net=condition_net, end=layer, image=cropped_x, condition=condition)
-            generated_image = (1 - mask) * d_condition_x
+
+            if inpainting:
+                generated_image = (1 - mask) * d_condition_x
+            else: 
+                generated_image = d_condition_x
             d_edge = self.get_edge_gradient(input_image, generated_image, edge_detector)
             print('norm', norm(d_edge))
-            d_condition_x = generated_image + 1e-6 * (mask) * (input_image - cropped_x_nomask) - 1e-8 * d_edge
+            # TODO don't hardcode conv4
+            d_content = self.get_content_gradient(input_image, generated_image, image_net, content_layer)
+            d_condition_x = epsilon2 * generated_image + edge_epsilon * d_edge + content_epsilon * d_content
+
+            if inpainting:
+                d_condition_x += mask_epsilon * (mask) * (input_image - cropped_x_nomask)
+
             # Put the gradient back in the 256x256 format
             d_condition_x256 = np.zeros_like(x)
             d_condition_x256[:,:,topleft[0]:topleft[0]+image_size[0], topleft[1]:topleft[1]+image_size[1]] = d_condition_x.copy()
@@ -250,9 +273,9 @@ class Sampler(object):
             if epsilon3 > 0:
                 noise = np.random.normal(0, epsilon3, h.shape)  # Gaussian noise
 
-            # TODO don't hardcode conv4
-            d_content = self.get_content_gradient(input_image, generated_image, image_net, 'conv4')
-            d_h = epsilon1 * d_prior + epsilon2 * d_condition + epsilon4 * d_content + noise
+            d_h = epsilon1 * d_prior 
+            d_h += d_condition
+            d_h += noise
             h += step_size/np.abs(d_h).mean() * d_h
 
             h = np.clip(h, a_min=0, a_max=30)   # Keep the code within a realistic range
@@ -274,8 +297,13 @@ class Sampler(object):
                 name = "%s/samples/%05d.jpg" % (output_dir, i)
 
                 label = self.get_label(condition)
-                image = last_xx * mask + (1 - mask) * input_image
-                list_samples.append( (last_xx.copy(), name, label) )
+                if inpainting:
+                    image = last_xx * mask + (1 - mask) * input_image
+                else:
+                    image = last_xx
+                # TODO check why this wasn't the case
+                #list_samples.append( (last_xx.copy(), name, label) )
+                list_samples.append( (image.copy(), name, label) )
 
             # Stop if grad is 0
             if norm(d_h) == 0:
