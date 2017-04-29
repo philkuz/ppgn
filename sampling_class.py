@@ -17,7 +17,7 @@ import scipy.misc, scipy.io
 import argparse
 import util
 from sampler import Sampler
-
+from masks import get_mask
 if settings.gpu:
     #caffe.set_device(1) # GPU ID
     caffe.set_mode_gpu() # sampling on GPU (recommended for speed)
@@ -114,12 +114,12 @@ def main():
     parser.add_argument('--edge_epsilon', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for edge loss')
     parser.add_argument('--content_epsilon', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for content loss')
     parser.add_argument('--content_layer', metavar='layer', type=str, default='conv4', nargs='?', help='Layer to use for content loss')
+    parser.add_argument('--mask_type', metavar='mask', type=str, default='', nargs='?', help='Mask type. Only square and random available')
     parser.add_argument('--seed', metavar='n', type=int, default=0, nargs='?', help='Random seed')
     parser.add_argument('--xy', metavar='n', type=int, default=0, nargs='?', help='Spatial position for conv units')
     parser.add_argument('--opt_layer', metavar='s', type=str, help='Layer at which we optimize a code')
     parser.add_argument('--act_layer', metavar='s', type=str, default="fc8", help='Layer at which we activate a neuron')
     parser.add_argument('--init_file', metavar='s', type=str, default="None", help='Init image')
-    parser.add_argument('--inpainting', action='store_true', default=False, help='whether or not to use inpainting')
     parser.add_argument('--write_labels', action='store_true', default=False, help='Write class labels to images')
     parser.add_argument('--output_dir', metavar='b', type=str, default=".", help='Output directory for saving results')
     parser.add_argument('--net_weights', metavar='b', type=str, default=settings.encoder_weights, help='Weights of the net being visualized')
@@ -145,7 +145,7 @@ def main():
     print " mask_epsilon: %s" % args.mask_epsilon
     print " edge_epsilon: %s" % args.edge_epsilon
     print " content_epsilon: %s" % args.content_epsilon
-    print " inpainting: %s" % args.inpainting
+    print " mask_type: %s" % args.mask_type
     print " content_layer: %s" % args.content_layer
 
     print " start learning rate: %s" % args.lr
@@ -182,8 +182,9 @@ def main():
     # Optimize a code via gradient ascent
     sampler = ClassConditionalSampler()
     if args.init_file != "None":
-        start_code, start_image, mask = sampler.get_code(encoder=encoder, path=args.init_file, layer=args.opt_layer, output_dir=args.output_dir, in_painting=True, inverse=True)
-
+        start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=args.init_file, output_dir=args.output_dir)
+        mask = get_mask(start_image, args.mask_type, inverse=True)
+        start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
         print "Loaded start code: ", start_code.shape
     else:
         raise ValueError('must pass in an init file')
@@ -197,9 +198,8 @@ def main():
                         n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
                         layer=args.act_layer, conditions=conditions,
                         epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
-			inpainting=args.inpainting, 
 			mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon, edge_epsilon=args.edge_epsilon,
-			content_layer=args.content_layer, 
+			content_layer=args.content_layer,
                         output_dir=args.output_dir, mask=mask, input_image=start_image,
                         reset_every=args.reset_every, save_every=args.save_every)
 

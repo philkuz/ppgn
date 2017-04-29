@@ -1,5 +1,6 @@
 #/bin/bash
-#
+# This file recreates an abstract picture of a bellpepper using ppgn
+# and randomly sampling points in the graph.
 # Phillip Kuznetsov <philkuz@ml.berkeley.edu>
 # 2018
 
@@ -27,9 +28,9 @@ epsilon3=1e-10       # noise
 edge_epsilon=1e-5    # edge
 content_epsilon=0 #1 # content
 mask_epsilon=1  # mask epsilon
+mask_type='random'
 content_layer=conv4 # layer to use for content loss6
 init_file="images/bell_pepper.jpg"    # Start from a random code. To start from a real code, replace with a path e.g. "images/filename.jpg"
-mask_type='square'
 # Condition net
 net_weights="nets/caffenet/bvlc_reference_caffenet.caffemodel"
 net_definition="nets/caffenet/caffenet.prototxt"
