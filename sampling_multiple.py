@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 '''
-Anh Nguyen <anh.ng8@gmail.com>
-2016
+Phillip Kuznetsov
+2017
 '''
-
+from __future__ import print_function
 import os, sys
 os.environ['GLOG_minloglevel'] = '2'    # suprress Caffe verbose prints
 
@@ -94,7 +94,7 @@ class ClassConditionalSampler(Sampler):
 
 
     def print_progress(self, i, info, condition, prob, grad):
-        print "step: %04d\t max: %4s [%.2f]\t obj: %4s [%.2f]\t norm: [%.2f]" % ( i, info['best_unit'], info['best_unit_prob'], condition['unit'], prob, norm(grad) )
+        print("step: %04d\t max: %4s [%.2f]\t obj: %4s [%.2f]\t norm: [%.2f]" % ( i, info['best_unit'], info['best_unit_prob'], condition['unit'], prob, norm(grad) ))
 
 
 def main():
@@ -134,34 +134,34 @@ def main():
         args.lr_end = args.lr
 
     # summary
-    print "-------------"
-    print " units: %s    xy: %s" % (args.units, args.xy)
-    print " n_iters: %s" % args.n_iters
-    print " reset_every: %s" % args.reset_every
-    print " save_every: %s" % args.save_every
-    print " threshold: %s" % args.threshold
+    print("-------------")
+    print(" units: %s    xy: %s" % (args.units, args.xy))
+    print(" n_iters: %s" % args.n_iters)
+    print(" reset_every: %s" % args.reset_every)
+    print(" save_every: %s" % args.save_every)
+    print(" threshold: %s" % args.threshold)
 
-    print " epsilon1: %s" % args.epsilon1
-    print " epsilon2: %s" % args.epsilon2
-    print " epsilon3: %s" % args.epsilon3
-    print " mask_epsilon: %s" % args.mask_epsilon
-    print " edge_epsilon: %s" % args.edge_epsilon
-    print " content_epsilon: %s" % args.content_epsilon
-    print " style_epsilon: %s" % args.style_epsilon
-    print " mask_type: %s" % args.mask_type
-    print " content_layer: %s" % args.content_layer
+    print(" epsilon1: %s" % args.epsilon1)
+    print(" epsilon2: %s" % args.epsilon2)
+    print(" epsilon3: %s" % args.epsilon3)
+    print(" mask_epsilon: %s" % args.mask_epsilon)
+    print(" edge_epsilon: %s" % args.edge_epsilon)
+    print(" content_epsilon: %s" % args.content_epsilon)
+    print(" style_epsilon: %s" % args.style_epsilon)
+    print(" mask_type: %s" % args.mask_type)
+    print(" content_layer: %s" % args.content_layer)
 
-    print " start learning rate: %s" % args.lr
-    print " end learning rate: %s" % args.lr_end
-    print " seed: %s" % args.seed
-    print " opt_layer: %s" % args.opt_layer
-    print " act_layer: %s" % args.act_layer
-    print " init_file: %s" % args.init_dir
-    print "-------------"
-    print " output dir: %s" % args.output_dir
-    print " net weights: %s" % args.net_weights
-    print " net definition: %s" % args.net_definition
-    print "-------------"
+    print(" start learning rate: %s" % args.lr)
+    print(" end learning rate: %s" % args.lr_end)
+    print(" seed: %s" % args.seed)
+    print(" opt_layer: %s" % args.opt_layer)
+    print(" act_layer: %s" % args.act_layer)
+    print(" init_file: %s" % args.init_dir)
+    print("-------------")
+    print(" output dir: %s" % args.output_dir)
+    print(" net weights: %s" % args.net_weights)
+    print(" net definition: %s" % args.net_definition)
+    print("-------------")
 
     # encoder and generator for images
     encoder = caffe.Net(settings.encoder_definition, settings.encoder_weights, caffe.TEST)
@@ -182,19 +182,31 @@ def main():
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]
     # TODO get this to work for multiple files
     files_to_read = [os.path.join(args.init_dir, f) for f in os.listdir(args.init_dir)]
-    attributes = ['content_epsilon','style_epsilon', 'edge_epsilon']
-    variables = [1e-2 * 10 ** (-i) for i in range(7)]
+    attributes = ['content_epsilon']#,'style_epsilon', 'edge_epsilon']
+    # attributes = ['style_epsilon', 'edge_epsilon']
+    variables = [1e-2 * 10 ** (-i*3) for i in range(2)]
     for atr in attributes:
         images_to_save = []
         for image_file in files_to_read:
             sampler = ClassConditionalSampler()
             start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
-            images_col = [start_image.copy()]
+            images_col = None
             for var in variables:
                 args[atr] = var
+                sampler = ClassConditionalSampler()
+                start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
+                if images_col is None:
+                    images_col = [start_image.copy()]
                 print('running', image_file, var)
                 # Optimize a code via gradient ascent
-                mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
+
+                # mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
+                # mask for randomness with edge loss
+                mask1 = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
+                # mask for randomness with edge and content loss
+                mask2 = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
+                # mask for preserving the image entirely
+                mask3 = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
                 start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
                 output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
                                     gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
@@ -206,7 +218,7 @@ def main():
                                     content_layer=args.content_layer,
                                     output_dir=args.output_dir, mask=mask, input_image=start_image,
                                     reset_every=args.reset_every, save_every=args.save_every)
-
+                print('Saving {} with val {} for {}'.format(atr, var, image_file))
                 images_col.append(output_image)
             images_to_save.append(images_col)
 

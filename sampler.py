@@ -3,7 +3,7 @@
 Anh Nguyen <anh.ng8@gmail.com>
 2016
 '''
-
+from __future__ import print_function
 import os, sys
 os.environ['GLOG_minloglevel'] = '2'    # suprress Caffe verbose prints
 
@@ -118,7 +118,6 @@ class Sampler(object):
         # calculate the edges of the images
         input_edge = edge_detector.forward(data=input_image)['laplace'].copy()
         generated_edge = edge_detector.forward(data=generated_image)['laplace'].copy()
-
         # l2 norm derivative is just the difference
         diff = input_edge - generated_edge
         # backprop thru
@@ -218,8 +217,8 @@ class Sampler(object):
             # Backpropagate the above gradient all the way to h (through generator)
             # This gradient 'd_condition' is d log(p(y|h)) / dh (the epsilon2 term in Eq. 11 in the paper)
             d_condition = self.backward_from_x_to_h(generator=image_generator, diff=d_condition_x256, start=gen_in_layer, end=gen_out_layer)
-            if i % 10 == 0:
-                self.print_progress(i, info, condition, prob, d_condition)
+            # if i % 10 == 0:
+            #     self.print_progress(i, info, condition, prob, d_condition)
 
             # 3. Compute the epsilon3 term ---
             noise = np.zeros_like(h)
@@ -259,7 +258,7 @@ class Sampler(object):
 
             # Stop if grad is 0
             if norm(d_h) == 0:
-                print " d_h is 0"
+                print(" d_h is 0")
                 break
 
             # Randomly sample a class every N iterations
@@ -272,7 +271,7 @@ class Sampler(object):
             i += 1  # Next iter
 
         # returning the last sample
-        print "-------------------------"
-        print "Last sample: prob [%s] " % last_prob
+        print( "-------------------------")
+        print("Last sample: prob [%s] " % last_prob)
 
         return last_xx, list_samples

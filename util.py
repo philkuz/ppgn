@@ -74,7 +74,7 @@ def gram(matrix, gram_scale=1):
 def save_checkerboard(images, path, labels=None):
     all_rows = []
     # left padding
-    all_rows.append(np.zeros((50, 227*8,3)))
+    all_rows.append(np.zeros((50, 227*len(images[0]),3)))
     for _, col in enumerate(images):
         new_col = []
         for i,img in enumerate(col):
@@ -94,6 +94,7 @@ def save_checkerboard(images, path, labels=None):
     #     print 'allrows,',all_rows[r].shape
     # out_image = np.concatenate(all_rows, axis=1).transpose((1, 2, 0))
     if labels is not None:
+        labels = labels[:min(len(images[0]), 8)]
         out_image = drawCaptions(scipy.misc.toimage(out_image), labels)
     scipy.misc.imsave(path, out_image)
 

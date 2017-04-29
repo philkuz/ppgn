@@ -132,7 +132,6 @@ class StyleTransfer:
 
         # grab the style of generated
         gen_content = gen_layer_rep['content'][layer]
-
         # l2 norm derivative is just the difference
         diff = image_content - gen_content
         grad = diff * (gen_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
