@@ -62,6 +62,34 @@ def convert_words_into_numbers(vocab_file, words):
     numbers = [ lines.index(w) + 1 for w in words ]
     numbers.append( 0 )     # <unk>
     return numbers
+
 def gram(matrix, gram_scale=1):
     ''' calculates a grammian matrix'''
-    return gram_scale* matrix.dot( matrix.T)
+    matrix = matrix.reshape((matrix.shape[0], matrix.shape[1] * matrix.shape[2]))
+    transpose = matrix.transpose()
+    return gram_scale* matrix.dot( transpose)
+
+def save_checkerboard(images, path):
+    all_rows = []
+    # left padding
+    all_rows.append(np.zeros((227, 227*8,3)))
+    for col in images:
+        print(all_rows[-1].shape)
+        new_col = []
+        for i in col:
+            i = i[::-1,:,:]
+            new_col += [deprocess(i, in_range=(-120, 120))]
+        all_rows.append(np.concatenate(new_col, axis=1))
+        print(all_rows[-1].shape)
+
+    out_image = np.concatenate(all_rows, axis=0)
+    # for r in range((len(images) / 8)+1):
+    #     row = []
+    #     for i in images[r:(r+1)*8]:
+    #        row += [i.reshape((3,227,227))]
+    #     all_rows += [np.concatenate(row, axis=2)]
+    #     print 'allrows,',all_rows[r].shape
+    # out_image = np.concatenate(all_rows, axis=1).transpose((1, 2, 0))
+    print(out_image.shape)
+    scipy.misc.imsave(path, out_image)
+

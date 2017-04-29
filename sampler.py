@@ -15,18 +15,11 @@ import numpy as np
 from numpy.linalg import norm
 import scipy.misc, scipy.io
 import util
-
-# weights for content loss
-CAFFENET_WEIGHTS = {"content": {"conv4": 1},
-                    "style": {"conv1": 0.2,
-                              "conv2": 0.2,
-                              "conv3": 0.2,
-                              "conv4": 0.2,
-                              "conv5": 0.2}}
+from style import StyleTransfer
 
 class Sampler(object):
 
-    def load_image(self, shape, path, output_dir=''):
+    def load_image(self, shape, path, output_dir='', save=True):
         ''' loads an image in bgr format '''
         images = np.zeros(shape,  dtype='float32')
         image_size = shape[2:]
@@ -35,8 +28,9 @@ class Sampler(object):
         images[0] = np.transpose(in_image, (2, 0, 1))   # convert to (3, 227, 227) format
 
         data = images[:,::-1]   # convert from RGB to BGR
-        name = "%s/samples/%s.jpg" % (output_dir, 'start')
-        util.save_image(data, name)
+        if save:
+            name = "%s/samples/%s.jpg" % (output_dir, 'start')
+            util.save_image(data, name)
         return data
 
     def get_code(self, encoder, data, layer, output_dir='', mask=None):
@@ -136,69 +130,14 @@ class Sampler(object):
 
         dst.diff.fill(0.)   # reset objective after each step
         return g
-    def get_style_gradient(self, input_image, generated_image, image_net, layer):
-        '''
-        Return style loss gradient as defined in Gatys et. al.
-        '''
-
-        # calculate the style of generated image
-        input_forward = image_net.forward(data=input_image)
-        input_content = image_net.blobs[layer].data[0].copy()
-        input_gram = util.gram(input_content)
-
-        # calculate the style of generated
-        generated_forward = image_net.forward(data=generated_image)
-        generated_content = image_net.blobs[layer].data[0].copy()
-        gen_gram = util.gram(generated_content)
-
-        # l2 norm derivative is just the difference
-        diff = gen_gram -input_gram
-        c = (gen_gram.shape[0] * gen_gram.shape[1])**-2
-        grad = c * diff.dot(gen_gram) * (generated_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
-
-        # backprop back
-        dst = image_net.blobs[layer]
-
-        dst.diff[...] = grad
-        image_net.backward(start=layer)
-        # assumes that the input layer of the net is 'data'
-        g = image_net.blobs['data'].diff.copy()
-
-        dst.diff.fill(0.)   # reset objective after each step
-        return g
-    def get_content_gradient(self, input_image, generated_image, image_net, content_layer):
-        '''
-        Return content loss gradient as defined in Gatys et. al.
-        '''
-
-        # calculate the edges of the images
-        input_forward = image_net.forward(data=input_image)
-        input_content = image_net.blobs[content_layer].data[0].copy()
-        # TODO could pose issues if not reset
-        generated_forward = image_net.forward(data=generated_image)
-        generated_content = image_net.blobs[content_layer].data[0].copy()
-
-        # l2 norm derivative is just the difference
-        diff = input_content - generated_content
-        grad = diff * (generated_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
-
-        # backprop back
-        dst = image_net.blobs[content_layer]
-
-        dst.diff[...] = grad
-        image_net.backward(start=content_layer)
-        # assumes that the input layer of the net is 'data'
-        g = image_net.blobs['data'].diff.copy()
-
-        dst.diff.fill(0.)   # reset objective after each step
-        return g
 
     def sampling( self, condition_net, image_encoder, image_net, image_generator, edge_detector,
                 gen_in_layer, gen_out_layer, start_code, content_layer,
                 n_iters, lr, lr_end, threshold,
                 layer, conditions, mask=None, input_image=None, #units=None, xy=0,
                 epsilon1=1, epsilon2=1, epsilon3=1e-10,
-                mask_epsilon=1e-6, content_epsilon=1e-8, edge_epsilon=1e-8,
+                mask_epsilon=1e-6, edge_epsilon=1e-8,
+                style_epsilon=1e-8, content_epsilon=1e-8,
                 output_dir=None, reset_every=0, save_every=1):
         # Get the input and output sizes
         image_shape = condition_net.blobs['data'].data.shape
@@ -220,6 +159,13 @@ class Sampler(object):
         # Make sure the layer size and initial vector size match
         assert src.data.shape == start_code.shape
 
+        # setup style transfer
+        if input_image is not None:
+            style_transfer = StyleTransfer(image_net, style_weight=style_epsilon, content_weight=content_epsilon)
+            style_transfer.init_image(input_image)
+        else:
+            # TODO setup loading the vector components
+            raise NotImplementedError('input image must not be None')
         # Variables to store the best sample
         last_xx = np.zeros(image_shape)    # best image
         last_prob = -sys.maxint                 # highest probability
@@ -259,8 +205,8 @@ class Sampler(object):
             else:
                 generated_image = d_condition_x
             d_edge = self.get_edge_gradient(input_image, generated_image, edge_detector)
-            d_content = self.get_content_gradient(input_image, generated_image, image_net, content_layer)
-            d_condition_x = epsilon2 * generated_image + edge_epsilon * d_edge + content_epsilon * d_content
+            d_content = style_transfer.get_gradient(generated_image)
+            d_condition_x = epsilon2 * generated_image + edge_epsilon * d_edge + d_content
 
             if mask is not None:
                 d_condition_x += mask_epsilon * (mask) * (input_image - cropped_x_nomask)

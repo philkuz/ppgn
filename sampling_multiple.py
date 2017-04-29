@@ -121,7 +121,7 @@ def main():
     parser.add_argument('--xy', metavar='n', type=int, default=0, nargs='?', help='Spatial position for conv units')
     parser.add_argument('--opt_layer', metavar='s', type=str, help='Layer at which we optimize a code')
     parser.add_argument('--act_layer', metavar='s', type=str, default="fc8", help='Layer at which we activate a neuron')
-    parser.add_argument('--init_file', metavar='s', type=str, default="None", help='Init image')
+    parser.add_argument('--init_dir', metavar='s', type=str, default="None", help='Init image')
     parser.add_argument('--write_labels', action='store_true', default=False, help='Write class labels to images')
     parser.add_argument('--output_dir', metavar='b', type=str, default=".", help='Output directory for saving results')
     parser.add_argument('--net_weights', metavar='b', type=str, default=settings.encoder_weights, help='Weights of the net being visualized')
@@ -156,7 +156,7 @@ def main():
     print " seed: %s" % args.seed
     print " opt_layer: %s" % args.opt_layer
     print " act_layer: %s" % args.act_layer
-    print " init_file: %s" % args.init_file
+    print " init_file: %s" % args.init_dir
     print "-------------"
     print " output dir: %s" % args.output_dir
     print " net weights: %s" % args.net_weights
@@ -181,35 +181,37 @@ def main():
 
     # Separate the dash-separated list of units into numbers
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]
+    images_to_save = []
+    # TODO get this to work for multiple files
+    files_to_read = [os.path.join(args.init_dir, f) for f in os.listdir(args.init_dir)][:1]
+    variables = [1e-2 * 10 ** (-i) for i in range(7)]
+    for image_file in files_to_read:
+        sampler = ClassConditionalSampler()
+        start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
+        images_col = [start_image]
+        for var in variables:
+            print('running', image_file, var)
+            # Optimize a code via gradient ascent
+            mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
+            start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
+            print "Loaded start code: ", start_code.shape
+            output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
+                                gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
+                                n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
+                                layer=args.act_layer, conditions=conditions,
+                                epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
+                                mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon,
+                                style_epsilon=var, edge_epsilon=args.edge_epsilon,
+                                content_layer=args.content_layer,
+                                output_dir=args.output_dir, mask=mask, input_image=start_image,
+                                reset_every=args.reset_every, save_every=args.save_every)
 
-    # Optimize a code via gradient ascent
-    sampler = ClassConditionalSampler()
-    if args.init_file != "None":
-        start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=args.init_file, output_dir=args.output_dir)
-        mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
-        start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
-        print "Loaded start code: ", start_code.shape
-    else:
-        raise ValueError('must pass in an init file')
-        # shape of the code being optimized
-        shape = generator.blobs[settings.generator_in_layer].data.shape
-        start_code = np.random.normal(0, 1, shape)
-        print ">>", np.min(start_code), np.max(start_code)
+            images_col.append(output_image)
+        images_to_save.append(images_col)
 
-    output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
-                        gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
-                        n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
-                        layer=args.act_layer, conditions=conditions,
-                        epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
-			mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon, edge_epsilon=args.edge_epsilon,
-			content_layer=args.content_layer,
-                        output_dir=args.output_dir, mask=mask, input_image=start_image,
-                        reset_every=args.reset_every, save_every=args.save_every)
-
-    # Output image
     filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s__%s.jpg" % (
             args.output_dir,
-            args.act_layer,
+            'sus',
             conditions[0]["unit"],
             args.n_iters,
             args.lr,
@@ -218,18 +220,7 @@ def main():
             str(args.epsilon3),
             args.seed
         )
-
-    # Save the final image
-    util.save_image(output_image, filename)
-    print "%s/%s" % (os.getcwd(), filename)
-
-    # Write labels to images
-    print "Saving images..."
-    for p in list_samples:
-        img, name, label = p
-        util.save_image(img, name)
-        if args.write_labels:
-            util.write_label_to_img(name, label)
+    util.save_checkerboard(images_to_save, filename)
 
 if __name__ == '__main__':
     main()
