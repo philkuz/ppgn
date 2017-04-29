@@ -136,7 +136,36 @@ class Sampler(object):
 
         dst.diff.fill(0.)   # reset objective after each step
         return g
+    def get_style_gradient(self, input_image, generated_image, image_net, layer):
+        '''
+        Return style loss gradient as defined in Gatys et. al.
+        '''
 
+        # calculate the style of generated image
+        input_forward = image_net.forward(data=input_image)
+        input_content = image_net.blobs[layer].data[0].copy()
+        input_gram = util.gram(input_content)
+
+        # calculate the style of generated
+        generated_forward = image_net.forward(data=generated_image)
+        generated_content = image_net.blobs[layer].data[0].copy()
+        gen_gram = util.gram(generated_content)
+
+        # l2 norm derivative is just the difference
+        diff = gen_gram -input_gram
+        c = (gen_gram.shape[0] * gen_gram.shape[1])**-2
+        grad = c * diff.dot(gen_gram) * (generated_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
+
+        # backprop back
+        dst = image_net.blobs[layer]
+
+        dst.diff[...] = grad
+        image_net.backward(start=layer)
+        # assumes that the input layer of the net is 'data'
+        g = image_net.blobs['data'].diff.copy()
+
+        dst.diff.fill(0.)   # reset objective after each step
+        return g
     def get_content_gradient(self, input_image, generated_image, image_net, content_layer):
         '''
         Return content loss gradient as defined in Gatys et. al.
@@ -151,7 +180,7 @@ class Sampler(object):
 
         # l2 norm derivative is just the difference
         diff = input_content - generated_content
-        grad = diff * (input_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
+        grad = diff * (generated_content > 0) # gradient claculation according to fzliu/style-transfer/style.py L114
 
         # backprop back
         dst = image_net.blobs[content_layer]
@@ -205,7 +234,7 @@ class Sampler(object):
             step_size = lr + ((lr_end - lr) * i) / n_iters
             condition = conditions[condition_idx]  # Select a class
             # 1. Compute the epsilon1 term ---
-            # compute gradient d log(p(h)) / dh per DAE results in Alain & Bengio 2014
+            # : compute gradient d log(p(h)) / dh per DAE results in Alain & Bengio 2014
             d_prior = self.h_autoencoder_grad(h=h, encoder=image_generator, decoder=image_encoder, gen_out_layer=gen_out_layer, topleft=topleft_DAE, mask=mask, input_image=input_image)
 
             # 2. Compute the epsilon2 term ---
@@ -243,7 +272,8 @@ class Sampler(object):
             # Backpropagate the above gradient all the way to h (through generator)
             # This gradient 'd_condition' is d log(p(y|h)) / dh (the epsilon2 term in Eq. 11 in the paper)
             d_condition = self.backward_from_x_to_h(generator=image_generator, diff=d_condition_x256, start=gen_in_layer, end=gen_out_layer)
-            self.print_progress(i, info, condition, prob, d_condition)
+            if i % 10 == 0:
+                self.print_progress(i, info, condition, prob, d_condition)
 
             # 3. Compute the epsilon3 term ---
             noise = np.zeros_like(h)

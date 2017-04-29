@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.misc
 import subprocess
+from scipy.linalg.blas import sgemm
 
 def normalize(img, out_range=(0.,1.), in_range=None):
     if not in_range:
@@ -34,7 +35,7 @@ def get_image_size(data_shape):
     Return (227, 227) from (1, 3, 227, 227) tensor.
     '''
     if len(data_shape) == 4:
-        return data_shape[2:] 
+        return data_shape[2:]
     else:
         raise Exception("Data shape invalid.")
 
@@ -43,7 +44,7 @@ def save_image(img, name):
     Normalize and save the image.
     '''
     img = img[:,::-1, :, :] # Convert from BGR to RGB
-    output_img = deprocess(img, in_range=(-120,120))                
+    output_img = deprocess(img, in_range=(-120,120))
     scipy.misc.imsave(name, output_img)
 
 def write_label_to_img(filename, label):
@@ -59,6 +60,8 @@ def convert_words_into_numbers(vocab_file, words):
     lines = f.read().splitlines()
 
     numbers = [ lines.index(w) + 1 for w in words ]
-    numbers.append( 0 )     # <unk> 
+    numbers.append( 0 )     # <unk>
     return numbers
-
+def gram(matrix, gram_scale=1):
+    ''' calculates a grammian matrix'''
+    return gram_scale* matrix.dot( matrix.T)

@@ -12,8 +12,14 @@ def get_mask(image, mask_type, inverse=True, args={} ):
         'square' : make_square_mask,
         '' : lambda x,y,z: None
     }
+    mask_args = {
+        'random' : ['percent_pix', 'sigma', 'use_laplace'],
+        'square' : ['top_left', 'dims'],
+        '': []
+    }
     if mask_type not in masks_map:
         raise ValueError('mask type {} not found'.format(mask_type))
+    args = {k : args[k] for k in mask_args[mask_type] if k in args}
     return masks_map[mask_type](image, inverse=inverse, **args)
 
 def make_square_mask(image, top_left=None, dims=None, inverse=False):

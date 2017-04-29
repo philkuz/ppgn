@@ -115,6 +115,7 @@ def main():
     parser.add_argument('--content_epsilon', metavar='eps', type=float, default=1.0, nargs='?', help='Scalar for content loss')
     parser.add_argument('--content_layer', metavar='layer', type=str, default='conv4', nargs='?', help='Layer to use for content loss')
     parser.add_argument('--mask_type', metavar='mask', type=str, default='', nargs='?', help='Mask type. Only square and random available')
+    parser.add_argument('--ratio_sample', metavar='eps', type=float, default=1.0, nargs='?', help='Amount to sample for random mask')
     parser.add_argument('--seed', metavar='n', type=int, default=0, nargs='?', help='Random seed')
     parser.add_argument('--xy', metavar='n', type=int, default=0, nargs='?', help='Spatial position for conv units')
     parser.add_argument('--opt_layer', metavar='s', type=str, help='Layer at which we optimize a code')
@@ -183,7 +184,7 @@ def main():
     sampler = ClassConditionalSampler()
     if args.init_file != "None":
         start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=args.init_file, output_dir=args.output_dir)
-        mask = get_mask(start_image, args.mask_type, inverse=True)
+        mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
         start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
         print "Loaded start code: ", start_code.shape
     else:

@@ -9,7 +9,7 @@ act_layer=fc8
 units="945"      # Index of neurons in fc layers or channels in conv layers
 xy=0              # Spatial position for conv layers, for fc layers: xy = 0
 
-n_iters=200       # Run for N iterations
+n_iters=500       # Run for N iterations
 reset_every=0     # Reset the code every N iterations (for diversity)
 save_every=5      # Save a sample every N iterations
 lr=1
@@ -25,20 +25,20 @@ epsilon3=1e-10       # noise
 
 # -----------------------------------------------
 # Ablative Compression variables
-edge_epsilon=0 # 1e-5    # edge
-content_epsilon=1e-5 #1 # content
+edge_epsilon=0 #1e-5    # edge
+content_epsilon=1e-3 #1 # content
 mask_epsilon=1  # mask epsilon
 mask_type='random'
 ratio_sample=0.03 # amount to sample if using random mask sampling
 content_layer=conv4 # layer to use for content loss6
-init_file="images/bell_pepper.jpg"    # Start from a random code. To start from a real code, replace with a path e.g. "images/filename.jpg"
+init_file="images/black_dog.jpg"    # Start from a random code. To start from a real code, replace with a path e.g. "images/filename.jpg"
 # Condition net
 net_weights="nets/caffenet/bvlc_reference_caffenet.caffemodel"
 net_definition="nets/caffenet/caffenet.prototxt"
 #-----------------------
 
 # Output dir
-dirname=${init_file:6:-4}
+dirname=${init_file:7:-4}
 output_dir="output/${dirname}/edge_${edge_epsilon}_content_${content_epsilon}"
 mkdir -p ${output_dir}
 
