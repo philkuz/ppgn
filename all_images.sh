@@ -9,7 +9,7 @@ act_layer=fc8
 units="945"      # Index of neurons in fc layers or channels in conv layers
 xy=0              # Spatial position for conv layers, for fc layers: xy = 0
 
-n_iters=1       # Run for N iterations
+n_iters=200      # Run for N iterations
 reset_every=0     # Reset the code every N iterations (for diversity)
 save_every=5      # Save a sample every N iterations
 lr=1

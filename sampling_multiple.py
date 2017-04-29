@@ -177,50 +177,51 @@ def main():
     edge_detector.params['laplace'][0].data[0, 0, :, :] = laplace  # horizontal
     # Fix the seed
     np.random.seed(args.seed)
-
-
+    args = util.AttributeDict(vars(args))
     # Separate the dash-separated list of units into numbers
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]
-    images_to_save = []
     # TODO get this to work for multiple files
-    files_to_read = [os.path.join(args.init_dir, f) for f in os.listdir(args.init_dir)][:1]
+    files_to_read = [os.path.join(args.init_dir, f) for f in os.listdir(args.init_dir)]
+    attributes = ['content_epsilon','style_epsilon', 'edge_epsilon']
     variables = [1e-2 * 10 ** (-i) for i in range(7)]
-    for image_file in files_to_read:
-        sampler = ClassConditionalSampler()
-        start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
-        images_col = [start_image]
-        for var in variables:
-            print('running', image_file, var)
-            # Optimize a code via gradient ascent
-            mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
-            start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
-            print "Loaded start code: ", start_code.shape
-            output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
-                                gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
-                                n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
-                                layer=args.act_layer, conditions=conditions,
-                                epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
-                                mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon,
-                                style_epsilon=var, edge_epsilon=args.edge_epsilon,
-                                content_layer=args.content_layer,
-                                output_dir=args.output_dir, mask=mask, input_image=start_image,
-                                reset_every=args.reset_every, save_every=args.save_every)
+    for atr in attributes:
+        images_to_save = []
+        for image_file in files_to_read:
+            sampler = ClassConditionalSampler()
+            start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
+            images_col = [start_image.copy()]
+            for var in variables:
+                args[atr] = var
+                print('running', image_file, var)
+                # Optimize a code via gradient ascent
+                mask = get_mask(start_image, args.mask_type, inverse=True, args={'percent_pix': args.ratio_sample})
+                start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
+                output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
+                                    gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
+                                    n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
+                                    layer=args.act_layer, conditions=conditions,
+                                    epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
+                                    mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon,
+                                    style_epsilon=args.style_epsilon, edge_epsilon=args.edge_epsilon,
+                                    content_layer=args.content_layer,
+                                    output_dir=args.output_dir, mask=mask, input_image=start_image,
+                                    reset_every=args.reset_every, save_every=args.save_every)
 
-            images_col.append(output_image)
-        images_to_save.append(images_col)
+                images_col.append(output_image)
+            images_to_save.append(images_col)
 
-    filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s__%s.jpg" % (
-            args.output_dir,
-            'sus',
-            conditions[0]["unit"],
-            args.n_iters,
-            args.lr,
-            str(args.epsilon1),
-            str(args.epsilon2),
-            str(args.epsilon3),
-            args.seed
-        )
-    util.save_checkerboard(images_to_save, filename)
+        filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s__%s.jpg" % (
+                args.output_dir,
+                atr,
+                conditions[0]["unit"],
+                args.n_iters,
+                args.lr,
+                str(args.epsilon1),
+                str(args.epsilon2),
+                str(args.epsilon3),
+                args.seed
+            )
+        util.save_checkerboard(images_to_save, filename, labels=['ground truth'] + variables)
 
 if __name__ == '__main__':
     main()

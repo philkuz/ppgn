@@ -2,6 +2,8 @@ import numpy as np
 import scipy.misc
 import subprocess
 from scipy.linalg.blas import sgemm
+from PIL import Image, ImageDraw, ImageFont
+from decimal import Decimal
 
 def normalize(img, out_range=(0.,1.), in_range=None):
     if not in_range:
@@ -69,18 +71,19 @@ def gram(matrix, gram_scale=1):
     transpose = matrix.transpose()
     return gram_scale* matrix.dot( transpose)
 
-def save_checkerboard(images, path):
+def save_checkerboard(images, path, labels=None):
     all_rows = []
     # left padding
-    all_rows.append(np.zeros((227, 227*8,3)))
-    for col in images:
-        print(all_rows[-1].shape)
+    all_rows.append(np.zeros((50, 227*8,3)))
+    for _, col in enumerate(images):
         new_col = []
-        for i in col:
-            i = i[::-1,:,:]
-            new_col += [deprocess(i, in_range=(-120, 120))]
+        for i,img in enumerate(col):
+            img = img[:, ::-1,:,:]
+            if i != 0:
+                new_col += [deprocess(img, in_range=(-120, 120))]
+            else:
+                new_col += [deprocess(img)]
         all_rows.append(np.concatenate(new_col, axis=1))
-        print(all_rows[-1].shape)
 
     out_image = np.concatenate(all_rows, axis=0)
     # for r in range((len(images) / 8)+1):
@@ -90,6 +93,28 @@ def save_checkerboard(images, path):
     #     all_rows += [np.concatenate(row, axis=2)]
     #     print 'allrows,',all_rows[r].shape
     # out_image = np.concatenate(all_rows, axis=1).transpose((1, 2, 0))
-    print(out_image.shape)
+    if labels is not None:
+        out_image = drawCaptions(scipy.misc.toimage(out_image), labels)
     scipy.misc.imsave(path, out_image)
 
+def drawCaptions(img, labels):
+    # get a font
+    fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 25)
+    # get a drawing context
+    draw = ImageDraw.Draw(img)
+    x = 10
+    for l in labels:
+        if type(l) is float:
+            string = str('%.2E' % Decimal(l))
+        else:
+            print('type of l', type(l))
+            string = l
+        draw.text((x, 10), string, font=fnt, fill=(255, 255, 255, 255))
+        x+=227
+
+    return img
+class AttributeDict(dict):
+    def __getattr__(self, attr):
+        return self[attr]
+    def __setattr__(self, attr, value):
+        self[attr] = value
