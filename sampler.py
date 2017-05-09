@@ -14,6 +14,7 @@ import caffe
 import numpy as np
 from numpy.linalg import norm
 import scipy.misc, scipy.io
+from scipy.ndimage.filters import gaussian_laplace as laplace_filter
 import util
 from style import StyleTransfer
 
@@ -109,8 +110,6 @@ class Sampler(object):
         code = decoder.blobs['fc6'].data
 
         g = code - h
-
-
         return g
 
     def get_edge_gradient(self, input_image, generated_image, edge_detector):
@@ -130,6 +129,14 @@ class Sampler(object):
         dst.diff.fill(0.)   # reset objective after each step
         return g
 
+    # def sampling( self, condition_net, image_encoder, image_net, image_generator, edge_detector,
+    #             gen_in_layer, gen_out_layer, start_code, content_layer,
+    #             n_iters, lr, lr_end, threshold,
+    #             layer, conditions, mask_inner=None, , input_image=None, #units=None, xy=0,
+    #             epsilon1=1, epsilon2=1, epsilon3=1e-10,
+    #             mask_epsilon=1e-6, edge_epsilon=1e-8,
+    #             style_epsilon=1e-8, content_epsilon=1e-8,
+    #             output_dir=None, reset_every=0, save_every=1):
     def sampling( self, condition_net, image_encoder, image_net, image_generator, edge_detector,
                 gen_in_layer, gen_out_layer, start_code, content_layer,
                 n_iters, lr, lr_end, threshold,
@@ -157,14 +164,16 @@ class Sampler(object):
 
         # Make sure the layer size and initial vector size match
         assert src.data.shape == start_code.shape
-
+        use_style_transfer= style_epsilon != 0 or content_epsilon !=0
         # setup style transfer
-        if input_image is not None:
+        if input_image is not None and use_style_transfer:
             style_transfer = StyleTransfer(image_net, style_weight=style_epsilon, content_weight=content_epsilon)
             style_transfer.init_image(input_image)
-        else:
+        elif input_image is None:
             # TODO setup loading the vector components
             raise NotImplementedError('input image must not be None')
+        elif not use_style_transfer:
+            print('not using style transfer')
         # Variables to store the best sample
         last_xx = np.zeros(image_shape)    # best image
         last_prob = -sys.maxint                 # highest probability
@@ -204,9 +213,9 @@ class Sampler(object):
             else:
                 generated_image = d_condition_x
             d_edge = self.get_edge_gradient(input_image, generated_image, edge_detector)
-            d_content = style_transfer.get_gradient(generated_image)
-            d_condition_x = epsilon2 * generated_image + edge_epsilon * d_edge + d_content
-
+            d_condition_x = epsilon2 * generated_image + edge_epsilon * d_edge
+            if use_style_transfer:
+                d_condition_x += style_transfer.get_gradient(generated_image)
             if mask is not None:
                 d_condition_x += mask_epsilon * (mask) * (input_image - cropped_x_nomask)
 
@@ -253,8 +262,8 @@ class Sampler(object):
                 else:
                     image = last_xx
                 # TODO check why this wasn't the case
-                list_samples.append( (last_xx.copy(), name, label) )
-                # list_samples.append( (image.copy(), name, label) )
+                # list_samples.append( (last_xx.copy(), name, label) )
+                list_samples.append( (image.copy(), name, label) )
 
             # Stop if grad is 0
             if norm(d_h) == 0:
@@ -273,5 +282,6 @@ class Sampler(object):
         # returning the last sample
         print( "-------------------------")
         print("Last sample: prob [%s] " % last_prob)
-
+        # if mask is not None:
+        #     return last_xx * mask + (1 - mask) * input_image, list_samples
         return last_xx, list_samples

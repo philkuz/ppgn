@@ -39,8 +39,7 @@ net_definition="nets/caffenet/caffenet.prototxt"
 #-----------------------
 
 # Output dir
-dirname=${init_file:6:-4}
-output_dir="output/${dirname}/edge_${edge_epsilon}_content_${content_epsilon}"
+output_dir="output/losses/"
 mkdir -p ${output_dir}
 
 # Directory to store samples
@@ -55,42 +54,33 @@ for unit in ${units}; do
     seed=0
     #for seed in {0..0}; do
 
-        python ./sampling_multiple.py \
-            --act_layer ${act_layer} \
-            --opt_layer ${opt_layer} \
-            --unit ${unit} \
-            --xy ${xy} \
-            --n_iters ${n_iters} \
-            --save_every ${save_every} \
-            --reset_every ${reset_every} \
-            --lr ${lr} \
-            --lr_end ${lr_end} \
-            --seed ${seed} \
-            --output_dir ${output_dir} \
-            --init_dir ${init_dir} \
-            --mask_type ${mask_type} \
-            --ratio_sample ${ratio_sample} \
-            --epsilon1 ${epsilon1} \
-            --epsilon2 ${epsilon2} \
-            --epsilon3 ${epsilon3} \
-            --mask_epsilon ${mask_epsilon} \
-            --edge_epsilon ${edge_epsilon} \
-            --content_epsilon ${content_epsilon} \
-            --style_epsilon ${style_epsilon} \
-            --content_layer ${content_layer} \
-            --threshold ${threshold} \
-            --net_weights ${net_weights} \
-            --net_definition ${net_definition} \
+    python ./sampling_all_losses.py \
+        --act_layer ${act_layer} \
+        --opt_layer ${opt_layer} \
+        --unit ${unit} \
+        --xy ${xy} \
+        --n_iters ${n_iters} \
+        --save_every ${save_every} \
+        --reset_every ${reset_every} \
+        --lr ${lr} \
+        --lr_end ${lr_end} \
+        --seed ${seed} \
+        --output_dir ${output_dir} \
+        --init_dir ${init_dir} \
+        --mask_type ${mask_type} \
+        --ratio_sample ${ratio_sample} \
+        --epsilon1 ${epsilon1} \
+        --epsilon2 ${epsilon2} \
+        --epsilon3 ${epsilon3} \
+        --mask_epsilon ${mask_epsilon} \
+        --edge_epsilon ${edge_epsilon} \
+        --content_epsilon ${content_epsilon} \
+        --style_epsilon ${style_epsilon} \
+        --content_layer ${content_layer} \
+        --threshold ${threshold} \
+        --net_weights ${net_weights} \
+        --net_definition ${net_definition} \
+        --use_square
 
-        # Plot the samples
-        if [ "${save_every}" -gt "0" ]; then
-
-            f_chain=${output_dir}/chain_${units}_hx_${epsilon1}_noise_${epsilon3}__${seed}.jpg
-
-            # Make a montage of steps
-            montage `ls ${sample_dir}/*.jpg | head -60` -tile 10x -geometry +1+1 ${f_chain}
-
-            readlink -f ${f_chain}
-        fi
     #done
 done

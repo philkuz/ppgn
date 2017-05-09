@@ -181,69 +181,78 @@ def main():
     args = util.AttributeDict(vars(args))
     # Separate the dash-separated list of units into numbers
     conditions = [ { "unit": int(u), "xy": args.xy } for u in args.units.split("_") ]
-    files_to_read = [os.path.join(args.init_dir, f) for f in os.listdir(args.init_dir)]
-    attributes = ['percent']
+    files_to_read = [os.path.join(args.init_dir, f) for f in os.listdir(args.init_dir)][:1]
+    attributes = ['content_epsilon','style_epsilon', 'edge_epsilon']
     # attributes = ['edge_epsilon']#,'style_epsilon', 'edge_epsilon']
-    variables = [0.005, 0.01, 0.03]
+    masks = ['random', 'laplace', 'square_random', 'square_laplace']
 
-    for atr in attributes:
+    images_to_save = []
+    for image_file in files_to_read:
+        image_name = re.split('\.|/', image_file)[-2]
+        print('image_name',image_name)
+        image_path = os.path.join(args.output_dir, image_name)
+        if not os.path.exists(image_path):
+            os.makedirs(image_path)
 
-        atr_path = os.path.join(args.output_dir, atr)
-        if not os.path.exists(atr_path):
-            os.makedirs(atr_path)
+        images_col = None
+        for mask_type in masks:
+            atr_path = os.path.join(image_path, mask_type)
+            if not os.path.exists(atr_path):
+                os.makedirs(atr_path)
 
-        images_to_save = []
-        for image_file in files_to_read:
-            image_name = re.split('\.|/', image_file)[-2]
-            print('image_name',image_name)
-            image_path = os.path.join(atr_path, image_name)
-            if not os.path.exists(image_path):
-                os.makedirs(image_path)
+            sampler = ClassConditionalSampler()
+            start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
 
-            images_col = None
-            for var in variables:
-                sampler = ClassConditionalSampler()
-                start_image = sampler.load_image(shape=encoder.blobs["data"].data.shape,path=image_file, output_dir=args.output_dir, save=False)
-                if images_col is None:
-                    images_col = [start_image.copy()]
-                print('running', image_file, var)
-                # Optimize a code via gradient ascent
+            if images_col is None:
+                images_col = [start_image.copy()]
 
-                mask1 = get_mask(start_image, 'laplace', args={'max_density' : var if var > 0.03 else 3*(var)/2, 'min_density' : var - 0.02 if var > 0.03 else var/2} , inverse=False)
-                if False :# args.use_square:
-                    mask2 = get_mask(start_image, 'square', inverse=True)
-                    mask = util.combine_masks(mask1, mask2)
-                else:
-                    mask = mask1
-                start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
-                output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
-                                    gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
-                                    n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
-                                    layer=args.act_layer, conditions=conditions,
-                                    epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
-                                    mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon,
-                                    style_epsilon=args.style_epsilon, edge_epsilon=args.edge_epsilon,
-                                    content_layer=args.content_layer,
-                                    output_dir=args.output_dir, mask=mask, input_image=start_image,
-                                    reset_every=args.reset_every, save_every=args.save_every)
-                print('Saving {} with val {} for {}'.format(atr, var, image_file))
-                images_col.append(output_image)
-                file_path = os.path.join(image_path, str(var) +'.jpg')
-                util.save_image(output_image, file_path)
-            images_to_save.append(images_col)
+            print('running', image_file, mask_type)
+            if 'square' in mask_type:
+                other_mask_type = mask_type.split('_')[1]
+                mask1 = get_mask(start_image, other_mask_type, inverse=False)
+                mask2 = get_mask(start_image, 'square', inverse=True)
+                mask = util.combine_masks(mask1, mask2)
+            else:
+                mask = get_mask(start_image, mask_type, inverse=False)
+            images_col.append((mask)*255)
+            start_code= sampler.get_code(encoder=encoder, data=start_image, layer=args.opt_layer, mask=mask)
+            output_image, list_samples = sampler.sampling( condition_net=net, image_encoder=encoder, image_net=net, image_generator=generator, edge_detector=edge_detector,
+                                gen_in_layer=settings.generator_in_layer, gen_out_layer=settings.generator_out_layer, start_code=start_code,
+                                n_iters=args.n_iters, lr=args.lr, lr_end=args.lr_end, threshold=args.threshold,
+                                layer=args.act_layer, conditions=conditions,
+                                epsilon1=args.epsilon1, epsilon2=args.epsilon2, epsilon3=args.epsilon3,
+                                mask_epsilon=args.mask_epsilon, content_epsilon=args.content_epsilon,
+                                style_epsilon=args.style_epsilon, edge_epsilon=args.edge_epsilon,
+                                content_layer=args.content_layer,
+                                output_dir=args.output_dir, mask=mask, input_image=start_image,
+                                reset_every=args.reset_every, save_every=args.save_every)
 
-        filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s__%s.jpg" % (
-                args.output_dir,
-                atr,
-                conditions[0]["unit"],
-                args.n_iters,
-                args.lr,
-                str(args.epsilon1),
-                str(args.epsilon2),
-                str(args.epsilon3),
-                args.seed
-            )
-        util.save_checkerboard(images_to_save, filename, labels=['ground truth'] + variables)
+            print('Saving {} for {}'.format(mask_type,image_name))
+            images_col.append(output_image)
+            file_path = os.path.join(image_path, str(mask_type) +'.jpg')
+            util.save_image(output_image, file_path)
+        images_to_save.append(images_col)
+
+    filename = "%s/%s_%04d_%04d_%s_h_%s_%s_%s__%s.jpg" % (
+            args.output_dir,
+            mask_type,
+            conditions[0]["unit"],
+            args.n_iters,
+            args.lr,
+            str(args.epsilon1),
+            str(args.epsilon2),
+            str(args.epsilon3),
+            args.seed
+        )
+    util.save_checkerboard(images_to_save, filename, labels=['ground truth',
+                                                            'random' ,
+                                                            'random inpainting',
+                                                            'laplace',
+                                                            'laplace inpainting',
+                                                            'square random',
+                                                            'square random inpainting',
+                                                            'square laplace',
+                                                            'square laplace inpainting'] )
 
 if __name__ == '__main__':
     main()

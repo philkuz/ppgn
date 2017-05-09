@@ -19,6 +19,10 @@ def normalize(img, out_range=(0.,1.), in_range=None):
     result = (result - min_val) / (max_val - min_val) * (out_range[1] - out_range[0]) + out_range[0]
     return result
 
+def combine_masks(mask1, mask2):
+    return np.maximum(mask1, mask2)
+    # return np.minimum(mask1, mask2)
+
 def deprocess(images, out_range=(0.,1.), in_range=None):
     num = images.shape[0]
     c = images.shape[1]
@@ -94,13 +98,13 @@ def save_checkerboard(images, path, labels=None):
     #     print 'allrows,',all_rows[r].shape
     # out_image = np.concatenate(all_rows, axis=1).transpose((1, 2, 0))
     if labels is not None:
-        labels = labels[:min(len(images[0]), 8)]
+        # labels = labels[:min(len(images[0]), 8)]
         out_image = drawCaptions(scipy.misc.toimage(out_image), labels)
     scipy.misc.imsave(path, out_image)
 
 def drawCaptions(img, labels):
     # get a font
-    fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 25)
+    fnt = ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 15)
     # get a drawing context
     draw = ImageDraw.Draw(img)
     x = 10
@@ -108,7 +112,6 @@ def drawCaptions(img, labels):
         if type(l) is float:
             string = str('%.2E' % Decimal(l))
         else:
-            print('type of l', type(l))
             string = l
         draw.text((x, 10), string, font=fnt, fill=(255, 255, 255, 255))
         x+=227

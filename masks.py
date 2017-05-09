@@ -9,12 +9,14 @@ from scipy.ndimage.filters import gaussian_laplace as laplace_filter
 def get_mask(image, mask_type, inverse=True, args={} ):
     masks_map = {
         'random' : make_random_mask,
+        'laplace' : make_laplace_mask,
         'square' : make_square_mask,
         '' : lambda x,y,z: None
     }
     mask_args = {
         'random' : ['percent_pix', 'sigma', 'use_laplace'],
         'square' : ['top_left', 'dims'],
+        'laplace': ['max_density', 'min_density'],
         '': []
     }
     if mask_type not in masks_map:
@@ -46,7 +48,6 @@ def make_square_mask(image, top_left=None, dims=None, inverse=False):
         mask = ones
         not_mask = zeros
     mask[:,:, top_left_x : width + top_left_x, top_left_y: top_left_y + height]  = not_mask[:,:, top_left_x : width + top_left_x, top_left_y: top_left_y + height]
-
     return mask
 
 def laplace_process(image, sigma):
@@ -57,6 +58,19 @@ def laplace_process(image, sigma):
     im = binary_erosion(im)
     return im
 
+def blur(im):
+    im =  np.linalg.norm(im[0,:,:,:], axis=0)
+    im = scipy.ndimage.filters.gaussian_filter(im,4)
+    return im
+
+def sample(im, max_density=0.05,min_density=0.01):
+    im = (max_density)*(np.abs(im)/np.max(np.abs(im)))
+    return (np.random.rand(*im.shape) < im) + (np.random.rand(*im.shape) < min_density) > 0
+def combine_masks(a, b):
+    return np.minimum(a, b)
+def make_laplace_mask(image, max_density=0.05, min_density=0.01, inverse=False):
+    return sample(image, max_density, min_density) * (not inverse)
+
 def make_random_mask(image, sigma=3, percent_pix = 0.03, use_laplace=False, inverse=False):
     ''' Returns a mask from randomly sampled points'''
     image_shape = image.shape
@@ -65,7 +79,7 @@ def make_random_mask(image, sigma=3, percent_pix = 0.03, use_laplace=False, inve
     # make the mask
     zeros = np.zeros(image_shape)
     ones = np.ones(image_shape)
-    if inverse:
+    if not inverse:
         mask = zeros
         not_mask = ones
     else:
